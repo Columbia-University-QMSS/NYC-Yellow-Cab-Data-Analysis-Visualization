@@ -1,0 +1,256 @@
+---
+title: "NYC Yellow Cab"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    storyboard: true
+    theme: spacelab
+    social: menu
+    orientation: rows
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(readr)
+library(dplyr)
+library(leaflet)
+library(leaflet.extras)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(RColorBrewer)
+library(qdap)
+library(wordcloud)
+library(syuzhet)
+library(pander)
+library(DT)
+library(rgdal)
+
+setwd("/Users/stevenjia93/Desktop/CU_Spring/DataVis/Project/Data")
+load("yl_data.RData")
+ori <- readRDS("final_data.rds")
+df <- ori
+load("new.rda")
+
+# Lookup variable names / descriptions
+lookup_list  <- as.list(sort(unique(df$pickup_hour)))
+
+#----------- Remove Later
+set.seed(1) # Remove Later
+smalldf <- sample_frac(df, 0.01) # Remove
+df <- smalldf
+#----------- Remove Later
+
+dataset <- df
+nyc_nei <-readOGR("nyc_neighborhood/.", "NEIGHNYC")
+```
+
+
+About
+======================================
+
+Row
+-------------------------------------------------
+
+### Team
+
+<img src="f.png" height="200px" width="500px" />
+
+
+Motivation
+======================================
+
+Row
+-------------------------------------------------
+
+### Motivation
+
+<img src="motivation.png" height="200px" width="500px" />
+
+
+Data
+=============
+
+Row
+-------------------------------------------------
+
+### Data Description
+
+* The TLC Yellow Taxi Dataset
+    + Collected period: 04/04/2016 - 04/010/2016 (only one week)
+    + Trip pickup & dropoff locations, trip date & time, fare amount
+    + More than 2.6+ million rides
+
+* Neighborhood Data
+    + From package "rgdal"
+    + Location: from coordinate (latitude, longitude) ---> neighborhood  
+      e.g. (40.762344, -73.982364)  --->  Midtown
+    
+* Merged Data
+    + Pickup time: divided into hours
+    + Trip duration (in sec): time difference between pickup & dropoff
+    + Fare per min ($ / sec): fare_amout / trip_duration
+    
+Row
+-------------------------------------------------
+
+### Observations
+```{r}
+obs <- "2,665,780"
+valueBox(obs, icon = "fa-comments")
+```
+
+### Variables
+```{r}
+vars <- ncol(ori)
+valueBox(vars, icon = "fa-pencil")
+```
+
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### TLC Yellow Taxi Dataset
+
+```{r}
+datatable(
+      head(yl, 100),
+      options = list(
+        initComplete = JS(
+          "function(settings, json) {",
+          "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+          "}"),
+        scrollX = TRUE)
+    )
+
+```
+
+### Neighborhood Polygon Data
+
+```{r}
+datatable(
+      head(nyc_nei@data, 100),
+      options = list(
+        initComplete = JS(
+          "function(settings, json) {",
+          "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+          "}"),
+        scrollX = TRUE)
+    )
+
+```
+
+### Merged Data
+
+```{r warning = F, message = F}
+datatable(
+      head(df, 100),
+      options = list(
+        initComplete = JS(
+          "function(settings, json) {",
+          "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+          "}"),
+        scrollX = TRUE)
+    )
+
+```
+
+
+Cluster Analysis
+=============
+
+### Cluster Analysis of Pickup Locations
+
+```{r warning = F, message = F}
+  pal = colorFactor("Set1", domain = df$day)
+  color_weekday <- pal(df$day)
+  
+  circle_popup <- paste("<strong>Weekday: </strong>", df$day, "<br/>",
+                        "<strong>Total fare: </strong>", df$total_amount,"USD","<br/>",
+                        "<strong>Trip distance: </strong>", df$trip_distance, 
+                        "miles", "<br/>",
+                        "<strong>Number of passengers: </strong>", df$passenger_count)
+  leaflet(df) %>% 
+    addTiles('http://{s}.tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png') %>%
+    setView(-73.985131, 40.758895, zoom = 10) %>% 
+    addCircleMarkers(lng=~pickup_longitude, lat=~pickup_latitude,
+                     color=color_weekday, 
+                     popup = circle_popup,
+                     clusterOptions = markerClusterOptions())
+
+```
+
+Efficiency
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+### What are the busy hours and the most efficient hours to earn profit as drivers?
+
+```{r}
+  stats1 <- df %>% group_by(pickup_hour) %>% summarise(mean(fare_per_min) * 60)
+  stats2 <-  df %>% group_by(pickup_hour) %>% summarise(N = n())
+  stats <- left_join(stats1, stats2, by = "pickup_hour")
+  names(stats) <- c("pickup_hour", "mean_fare_per_min", "counts")
+  # install.packages("plotly")
+  ## Second axis
+  ay <- list(tickfont = list(color = "red"), 
+             overlaying = "y",
+             side = "right",
+             title = "Avg fare/min")
+
+  plot_ly(stats, x =~ pickup_hour, y =~ counts,
+          name = "# of Trips" ,type = "bar") %>% 
+    add_trace(y = ~ mean_fare_per_min, type = "scatter", 
+              name = "Avg $ / min", mode = "line + markers", yaxis = "y2") %>% 
+    layout(
+      title = "Average Fare per Minute ($ / min)",
+      xaxis = list(title = "Pickup Hour"),
+      yaxis = list(title = "Number of Trips"),
+      yaxis2 = ay
+      )
+```
+
+Shiny Heatmap
+==================
+
+https://zhenqmss.shinyapps.io/dv_final_project_nyc_yellow_cab/
+
+
+
+Word Cloud
+==========================
+
+Column {.tabset}
+------------------------
+
+### Wordcloud
+
+```{r fig.width = 5, fig.height = 5}
+freq <- freq_terms(new$text, 100)
+# plot(freq) #frequency chart
+set.seed(2103)
+wordcloud(freq$WORD, freq$FREQ, scale=c(3,0.5), max.words = 100, random.order=FALSE, rot.per=0, use.r.layout=FALSE,
+          colors=brewer.pal(8, "Dark2")) #wordcloud
+
+```
+
+> We collected news which contain "New York taxi" and "New York cabs" from April to June 2016 from lexisnexis academic. Here is a word cloud for the top 50 most frequent words appeared in the news. Uber is the first word that comes into sight. It shows that the competition between the taxi and Uber is discussed by news to a large scale. "drivers" and "taxi" are the second and the third most frequent words, which coincides with our research topic. Highlights from the remaining words show that news are concerned with the service, time, pay, lawsuits, and etc.
+
+### Sentiment Analysis {data-commentary-width=400}
+
+```{r fig.width = 5, fig.height = 5}
+  #easy sentiment analysis
+  nrc_data <- get_nrc_sentiment(new$text)
+  # pander::pandoc.table(nrc_data[, 1:8], split.table = Inf)
+  barplot(
+    sort(colSums(prop.table(nrc_data[, 1:8]))), 
+    horiz = TRUE, 
+    cex.names = 0.7, 
+    las = 1, 
+    main = "Emotions July 2016-March 2017", xlab="Percentage"
+    )
+```
+
+> We also perform a sentiment analysis based on the NRC Word-Emotion Association Lexicon.The NRC Emotion Lexicon is a list of English words and their associations with eight basic emotions (anger, fear, anticipation, trust, surprise, sadness, joy, and disgust) and two sentiments (negative and positive). Here we are showing the percentages of each of the eight emotions that appeared in the news. In general, news express more positive feelings than negative ones. "trust" and "anticipation" outnumbers "fear" and "anger". If we are able to continue the study, we would like to explore the change of emotions in a longer period of time. It would be helpful for the taxi companies to know how news think about taxis and they can thus adjust their business strategies.
+
