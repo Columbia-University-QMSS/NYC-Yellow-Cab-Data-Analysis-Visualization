@@ -7,9 +7,9 @@ output: html_document
 
 - Project Visualization:
 
-The project visualization is emebedded with RPubs at:
+**The project visualization is emebedded with RPubs at**:
 
-http://rpubs.com/st_jia/272196
+**http://rpubs.com/st_jia/272196**
 
 - Data:
 
